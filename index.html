@@ -1,0 +1,1920 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Симулятор спам-звонка — Колл-центр из ада</title>
+    <style>
+        :root {
+            --bg: #0a0a0f;
+            --phone-bg: #1a1a2e;
+            --screen-bg: #0d1117;
+            --text: #e0e0e0;
+            --text-dim: #8888aa;
+            --accent: #e04040;
+            --accent-green: #40c060;
+            --accent-blue: #4080e0;
+            --accent-yellow: #e0c040;
+            --btn-hangup: #d03030;
+            --btn-pickup: #30a050;
+            --border: rgba(255, 255, 255, 0.08);
+            --glow-red: rgba(255, 60, 60, 0.3);
+            --glow-green: rgba(60, 200, 100, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #050510;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+            overflow: hidden;
+            background-image:
+                radial-gradient(ellipse at center, rgba(40, 0, 0, 0.4) 0%, transparent 70%),
+                radial-gradient(ellipse at 70% 30%, rgba(0, 0, 40, 0.3) 0%, transparent 60%);
+        }
+
+        /* Эффект помех */
+        body::after {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: repeating-linear-gradient(0deg,
+                    rgba(255, 255, 255, 0.008) 0px,
+                    rgba(255, 255, 255, 0.008) 1px,
+                    transparent 1px,
+                    transparent 3px);
+            pointer-events: none;
+            z-index: 200;
+            animation: interference 0.05s linear infinite;
+        }
+        @keyframes interference {
+            0% {
+                transform: translateY(0);
+                opacity: 0.5;
+            }
+            100% {
+                transform: translateY(3px);
+                opacity: 1;
+            }
+        }
+
+        /* Телефон */
+        .phone-container {
+            width: 380px;
+            max-width: 94vw;
+            height: 700px;
+            max-height: 92vh;
+            background: var(--phone-bg);
+            border-radius: 28px;
+            display: flex;
+            flex-direction: column;
+            box-shadow:
+                0 0 80px rgba(255, 40, 40, 0.12),
+                0 30px 80px rgba(0, 0, 0, 0.6),
+                inset 0 1px 0 rgba(255, 255, 255, 0.03);
+            overflow: hidden;
+            position: relative;
+            border: 2px solid rgba(255, 255, 255, 0.06);
+            z-index: 10;
+        }
+
+        /* Верхняя панель */
+        .top-bar {
+            background: #111122;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #666;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .top-bar .time-display {
+            font-weight: 600;
+            color: #aaa;
+            letter-spacing: 1px;
+        }
+        .top-bar .icons {
+            display: flex;
+            gap: 6px;
+            font-size: 10px;
+        }
+        .signal-bars {
+            color: #777;
+            letter-spacing: -1px;
+        }
+        .battery {
+            color: #5a5;
+        }
+        .battery.low {
+            color: #a55;
+            animation: battery-blink 1s ease-in-out infinite;
+        }
+        @keyframes battery-blink {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* Экран */
+        .screen {
+            flex-grow: 1;
+            background: var(--screen-bg);
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Статус смены */
+        .shift-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 12px 16px;
+            border: 1px solid var(--border);
+        }
+        .shift-label {
+            font-size: 11px;
+            color: #777;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .shift-timer {
+            font-size: 28px;
+            font-weight: 700;
+            color: #fff;
+            font-variant-numeric: tabular-nums;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 2px;
+        }
+        .shift-timer.urgent {
+            color: #ff5050;
+            animation: timer-pulse 0.5s ease-in-out infinite;
+        }
+        @keyframes timer-pulse {
+            0%,
+            100% {
+                text-shadow: 0 0 10px rgba(255, 50, 50, 0.5);
+            }
+            50% {
+                text-shadow: 0 0 30px rgba(255, 50, 50, 1);
+            }
+        }
+        .calls-count {
+            font-size: 11px;
+            color: #888;
+            text-align: right;
+        }
+        .calls-count span {
+            color: #ccc;
+            font-weight: 600;
+        }
+
+        /* Карточка звонка */
+        .call-card {
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 20px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid var(--border);
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .call-card.incoming {
+            border-color: rgba(255, 200, 60, 0.3);
+            animation: incoming-glow 1.5s ease-in-out infinite;
+        }
+        .call-card.active {
+            border-color: rgba(60, 200, 100, 0.4);
+            background: rgba(30, 80, 40, 0.1);
+        }
+        .call-card.ended {
+            border-color: rgba(255, 60, 60, 0.3);
+            background: rgba(80, 20, 20, 0.1);
+        }
+        @keyframes incoming-glow {
+            0%,
+            100% {
+                box-shadow: 0 0 20px rgba(255, 200, 60, 0.1);
+            }
+            50% {
+                box-shadow: 0 0 40px rgba(255, 200, 60, 0.25);
+            }
+        }
+
+        .caller-avatar {
+            font-size: 60px;
+            animation: avatar-float 3s ease-in-out infinite;
+        }
+        @keyframes avatar-float {
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+            50% {
+                transform: translateY(-8px);
+            }
+        }
+        .caller-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #fff;
+        }
+        .caller-company {
+            font-size: 12px;
+            color: #888;
+            letter-spacing: 1px;
+        }
+        .caller-script {
+            font-size: 13px;
+            color: #bbb;
+            line-height: 1.5;
+            max-width: 280px;
+            font-style: italic;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Индикатор речи */
+        .speech-indicator {
+            display: flex;
+            gap: 3px;
+            align-items: flex-end;
+            height: 30px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .speech-indicator.listening {
+            opacity: 1;
+        }
+        .speech-bar {
+            width: 4px;
+            background: var(--accent-green);
+            border-radius: 2px;
+            animation: speech-bounce 0.6s ease-in-out infinite;
+        }
+        .speech-bar:nth-child(1) {
+            animation-delay: 0s;
+            height: 10px;
+        }
+        .speech-bar:nth-child(2) {
+            animation-delay: 0.1s;
+            height: 18px;
+        }
+        .speech-bar:nth-child(3) {
+            animation-delay: 0.2s;
+            height: 26px;
+        }
+        .speech-bar:nth-child(4) {
+            animation-delay: 0.3s;
+            height: 16px;
+        }
+        .speech-bar:nth-child(5) {
+            animation-delay: 0.4s;
+            height: 22px;
+        }
+        @keyframes speech-bounce {
+            0%,
+            100% {
+                transform: scaleY(0.5);
+            }
+            50% {
+                transform: scaleY(1.5);
+            }
+        }
+
+        /* Распознанный текст */
+        .recognized-text {
+            font-size: 12px;
+            color: #6a6;
+            min-height: 18px;
+            font-style: italic;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .recognized-text.visible {
+            opacity: 1;
+        }
+
+        /* Кнопки */
+        .btn-row {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            font-size: 24px;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+        .btn:active {
+            transform: scale(0.9);
+        }
+        .btn-pickup {
+            background: var(--btn-pickup);
+            color: #fff;
+            box-shadow: 0 0 25px var(--glow-green);
+        }
+        .btn-pickup:hover {
+            box-shadow: 0 0 40px var(--glow-green);
+        }
+        .btn-hangup {
+            background: var(--btn-hangup);
+            color: #fff;
+            box-shadow: 0 0 25px var(--glow-red);
+        }
+        .btn-hangup:hover {
+            box-shadow: 0 0 40px var(--glow-red);
+        }
+        .btn-mute {
+            background: #333;
+            color: #aaa;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+            font-size: 18px;
+        }
+        .btn-mute.muted {
+            background: #a33;
+            color: #fff;
+        }
+        .btn:disabled {
+            opacity: 0.3;
+            pointer-events: none;
+            box-shadow: none;
+        }
+
+        /* Нижняя панель */
+        .bottom-bar {
+            background: #111122;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            border-top: 1px solid var(--border);
+            flex-shrink: 0;
+            flex-wrap: wrap;
+        }
+        .stat-chip {
+            background: rgba(255, 255, 255, 0.04);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 10px;
+            color: #777;
+            letter-spacing: 1px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .stat-chip span {
+            color: #ccc;
+            font-weight: 600;
+        }
+
+        /* Уведомления */
+        .toast {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #222;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 12px;
+            z-index: 50;
+            pointer-events: none;
+            opacity: 0;
+            transition: all 0.4s ease;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            white-space: nowrap;
+        }
+        .toast.show {
+            opacity: 1;
+            top: 30px;
+        }
+        .toast.warning {
+            border-color: rgba(255, 150, 50, 0.5);
+            background: #2a1a0a;
+        }
+        .toast.success {
+            border-color: rgba(50, 200, 100, 0.5);
+            background: #0a2a1a;
+        }
+        .toast.error {
+            border-color: rgba(255, 60, 60, 0.5);
+            background: #2a0a0a;
+        }
+
+        /* Оверлей конца смены */
+        .end-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.6s ease;
+            flex-direction: column;
+            gap: 16px;
+        }
+        .end-overlay.visible {
+            opacity: 1;
+            pointer-events: all;
+        }
+        .end-card {
+            background: #1a1a2e;
+            padding: 28px 22px;
+            border-radius: 24px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            max-width: 300px;
+        }
+        .end-card .result-emoji {
+            font-size: 60px;
+            margin-bottom: 8px;
+        }
+        .end-card h2 {
+            color: #fff;
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+        .end-card p {
+            color: #aaa;
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 14px;
+        }
+        .end-card .stats-row {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 14px;
+        }
+        .end-stat {
+            text-align: center;
+            font-size: 10px;
+            color: #777;
+        }
+        .end-stat .val {
+            font-size: 22px;
+            font-weight: 700;
+            color: #fff;
+            display: block;
+        }
+        .restart-btn {
+            padding: 12px 28px;
+            border-radius: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .restart-btn:hover {
+            background: rgba(255, 255, 255, 0.16);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.1);
+        }
+
+        /* SMS Уведомление */
+        .sms-notification {
+            position: absolute;
+            top: 60px;
+            right: -320px;
+            width: 280px;
+            background: #1a1a2e;
+            border: 2px solid #ff6600;
+            border-radius: 16px;
+            padding: 16px;
+            z-index: 60;
+            box-shadow: 0 0 30px rgba(255, 100, 0, 0.4), 0 10px 40px rgba(0, 0, 0, 0.7);
+            transition: right 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            animation: sms-glow 2s ease-in-out infinite;
+        }
+        .sms-notification.show {
+            right: 20px;
+        }
+        @keyframes sms-glow {
+            0%, 100% {
+                box-shadow: 0 0 30px rgba(255, 100, 0, 0.4), 0 10px 40px rgba(0, 0, 0, 0.7);
+            }
+            50% {
+                box-shadow: 0 0 50px rgba(255, 100, 0, 0.7), 0 10px 50px rgba(0, 0, 0, 0.8);
+            }
+        }
+        .sms-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .sms-sender {
+            font-size: 11px;
+            color: #ff9933;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        .sms-time {
+            font-size: 10px;
+            color: #666;
+        }
+        .sms-body {
+            font-size: 13px;
+            color: #ddd;
+            line-height: 1.5;
+            margin-bottom: 12px;
+        }
+        .sms-code {
+            background: #000;
+            color: #ff6600;
+            font-size: 24px;
+            font-weight: 700;
+            text-align: center;
+            padding: 8px;
+            border-radius: 8px;
+            letter-spacing: 4px;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .sms-close-btn {
+            width: 100%;
+            padding: 8px;
+            background: rgba(255, 100, 0, 0.2);
+            border: 1px solid rgba(255, 100, 0, 0.4);
+            color: #ff9933;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .sms-close-btn:hover {
+            background: rgba(255, 100, 0, 0.4);
+            box-shadow: 0 0 20px rgba(255, 100, 0, 0.3);
+        }
+
+        /* Адаптив */
+        @media (max-width: 420px) {
+            .phone-container {
+                width: 100vw;
+                height: 100vh;
+                max-width: 100vw;
+                max-height: 100vh;
+                border-radius: 0;
+                border: none;
+            }
+            .btn {
+                width: 52px;
+                height: 52px;
+                font-size: 20px;
+            }
+            .caller-script {
+                font-size: 12px;
+            }
+            .sms-notification {
+                width: 240px;
+                right: -280px;
+            }
+            .sms-notification.show {
+                right: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="phone-container" id="phoneContainer">
+    <!-- Верхняя панель -->
+    <div class="top-bar">
+        <span class="time-display" id="timeDisplay">09:00</span>
+        <span class="icons">
+                <span class="signal-bars">▂▄▆█</span>
+                <span class="battery" id="batteryIcon">🔋</span>
+            </span>
+    </div>
+
+    <!-- Экран -->
+    <div class="screen">
+        <!-- Статус смены -->
+        <div class="shift-info">
+            <div>
+                <div class="shift-label">До конца смены</div>
+                <div class="shift-timer" id="shiftTimer">04:59</div>
+            </div>
+            <div class="calls-count">
+                Звонков: <span id="callsHandled">0</span>
+            </div>
+        </div>
+
+        <!-- Карточка звонка -->
+        <div class="call-card" id="callCard">
+            <div class="caller-avatar" id="callerAvatar">📞</div>
+            <div class="caller-name" id="callerName">Ожидание звонка...</div>
+            <div class="caller-company" id="callerCompany"></div>
+            <div class="caller-script" id="callerScript"></div>
+            <div class="speech-indicator" id="speechIndicator">
+                <div class="speech-bar"></div>
+                <div class="speech-bar"></div>
+                <div class="speech-bar"></div>
+                <div class="speech-bar"></div>
+                <div class="speech-bar"></div>
+            </div>
+            <div class="recognized-text" id="recognizedText"></div>
+        </div>
+
+        <!-- Кнопки -->
+        <div class="btn-row">
+            <button class="btn btn-mute" id="btnMute" title="Заглушить микрофон">🎤</button>
+            <button class="btn btn-pickup" id="btnPickup" title="Ответить">📞</button>
+            <button class="btn btn-hangup" id="btnHangup" title="Сбросить" disabled>📴</button>
+        </div>
+    </div>
+
+    <!-- Нижняя панель статистики -->
+    <div class="bottom-bar">
+        <div class="stat-chip">✅ <span id="statSuccess">0</span></div>
+        <div class="stat-chip">❌ <span id="statFailed">0</span></div>
+        <div class="stat-chip">😡 <span id="statRude">0</span></div>
+        <div class="stat-chip">💰 <span id="statBonus">0 ₽</span></div>
+    </div>
+
+    <!-- Тосты -->
+    <div class="toast" id="toast"></div>
+
+    <!-- SMS Уведомление -->
+    <div class="sms-notification" id="smsNotification">
+        <div class="sms-header">
+            <span class="sms-sender" id="smsSender">Банк</span>
+            <span class="sms-time" id="smsTime">только что</span>
+        </div>
+        <div class="sms-body" id="smsBody">
+            Код подтверждения:
+        </div>
+        <div class="sms-code" id="smsCode">0000</div>
+        <button class="sms-close-btn" id="smsCloseBtn">Закрыть уведомление ✕</button>
+    </div>
+
+    <!-- Оверлей конца -->
+    <div class="end-overlay" id="endOverlay">
+        <div class="end-card" id="endCard"></div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // ============ СОСТОЯНИЕ ИГРЫ ============
+        const state = {
+            shiftDuration: 300, // 5 минут = 300 секунд
+            timeRemaining: 300,
+            callsHandled: 0,
+            successfulCalls: 0,
+            failedCalls: 0,
+            rudeCalls: 0,
+            bonusMoney: 0,
+            isCallActive: false,
+            isCallIncoming: false,
+            isMuted: false,
+            gameOver: false,
+            shiftTimerInterval: null,
+            callTimeout: null,
+            recognition: null,
+            isListening: false,
+            currentCaller: null,
+            callerPatience: 100,
+            patienceDecayInterval: null,
+            toastTimeout: null,
+            // Для отслеживания сказанных фраз
+            saidPhrases: [],
+            callerResponded: false,
+            currentSmsCode: null, // Текущий код из SMS
+            moneyStolen: false, // Украдены ли деньги
+            usedScripts: {}, // Отслеживание использованных скриптов
+        };
+
+        // ============ DOM-ЭЛЕМЕНТЫ ============
+        const shiftTimer = document.getElementById('shiftTimer');
+        const callsHandled = document.getElementById('callsHandled');
+        const callCard = document.getElementById('callCard');
+        const callerAvatar = document.getElementById('callerAvatar');
+        const callerName = document.getElementById('callerName');
+        const callerCompany = document.getElementById('callerCompany');
+        const callerScript = document.getElementById('callerScript');
+        const speechIndicator = document.getElementById('speechIndicator');
+        const recognizedText = document.getElementById('recognizedText');
+        const btnPickup = document.getElementById('btnPickup');
+        const btnHangup = document.getElementById('btnHangup');
+        const btnMute = document.getElementById('btnMute');
+        const toast = document.getElementById('toast');
+        const endOverlay = document.getElementById('endOverlay');
+        const endCard = document.getElementById('endCard');
+        const statSuccess = document.getElementById('statSuccess');
+        const statFailed = document.getElementById('statFailed');
+        const statRude = document.getElementById('statRude');
+        const statBonus = document.getElementById('statBonus');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const batteryIcon = document.getElementById('batteryIcon');
+        const phoneContainer = document.getElementById('phoneContainer');
+        const smsNotification = document.getElementById('smsNotification');
+        const smsSender = document.getElementById('smsSender');
+        const smsTime = document.getElementById('smsTime');
+        const smsBody = document.getElementById('smsBody');
+        const smsCode = document.getElementById('smsCode');
+        const smsCloseBtn = document.getElementById('smsCloseBtn');
+
+        // ============ АУДИО ============
+        let audioCtx = null;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        }
+
+        function playTone(freq, duration, type = 'square', vol = 0.06) {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+                gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch (e) { /* */ }
+        }
+
+        function sfxRing() {
+            playTone(440, 0.3, 'square', 0.05);
+            setTimeout(() => playTone(440, 0.3, 'square', 0.05), 600);
+            setTimeout(() => playTone(440, 0.3, 'square', 0.05), 1200);
+        }
+
+        function sfxPickup() { playTone(600, 0.15, 'sine', 0.06); }
+
+        function sfxHangup() { playTone(250, 0.3, 'sawtooth', 0.05);
+            playTone(200, 0.2, 'sawtooth', 0.04); }
+
+        function sfxSuccess() { playTone(500, 0.1, 'sine', 0.05);
+            playTone(700, 0.1, 'sine', 0.04);
+            playTone(900, 0.15, 'sine', 0.03); }
+
+        function sfxFail() { playTone(150, 0.4, 'sawtooth', 0.06); }
+
+        function sfxRude() { playTone(80, 0.5, 'square', 0.08);
+            playTone(60, 0.3, 'square', 0.06); }
+
+        function sfxMoneyStolen() {
+            playTone(100, 0.3, 'square', 0.08);
+            playTone(80, 0.3, 'square', 0.07);
+            playTone(60, 0.5, 'square', 0.06);
+        }
+
+        function sfxSmsAlert() {
+            playTone(800, 0.1, 'sine', 0.04);
+            setTimeout(() => playTone(1000, 0.1, 'sine', 0.04), 200);
+        }
+
+        // ============ ТОСТЫ ============
+        function showToast(message, type = '') {
+            if (state.toastTimeout) clearTimeout(state.toastTimeout);
+            toast.textContent = message;
+            toast.className = 'toast ' + type + ' show';
+            state.toastTimeout = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2000);
+        }
+
+        // ============ SMS УВЕДОМЛЕНИЕ ============
+        function generateSmsCode() {
+            return Math.floor(1000 + Math.random() * 9000).toString();
+        }
+
+        function showSmsNotification(sender, message) {
+            const code = generateSmsCode();
+            state.currentSmsCode = code;
+
+            smsSender.textContent = sender;
+            smsBody.textContent = message;
+            smsCode.textContent = code;
+
+            const now = new Date();
+            smsTime.textContent = now.getHours().toString().padStart(2, '0') + ':' +
+                                 now.getMinutes().toString().padStart(2, '0');
+
+            smsNotification.classList.add('show');
+            sfxSmsAlert();
+        }
+
+        function hideSmsNotification() {
+            smsNotification.classList.remove('show');
+            state.currentSmsCode = null;
+        }
+
+        smsCloseBtn.addEventListener('click', () => {
+            hideSmsNotification();
+        });
+
+        // ============ ВЫБОР СЛУЧАЙНОГО СКРИПТА ============
+        function getRandomScript(scripts) {
+            // Возвращает случайный скрипт из массива
+            return scripts[Math.floor(Math.random() * scripts.length)];
+        }
+
+        // ============ ТАЙМЕР СМЕНЫ ============
+        function formatTime(seconds) {
+            const m = Math.floor(seconds / 60);
+            const s = seconds % 60;
+            return m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0');
+        }
+
+        function updateShiftTimer() {
+            state.timeRemaining--;
+            shiftTimer.textContent = formatTime(state.timeRemaining);
+
+            // Обновление времени в шапке
+            const totalElapsed = state.shiftDuration - state.timeRemaining;
+            const startHour = 9;
+            const currentMinute = Math.floor(totalElapsed / 60);
+            const currentSecond = totalElapsed % 60;
+            const displayHour = startHour + Math.floor(currentMinute / 60);
+            const displayMin = currentMinute % 60;
+            timeDisplay.textContent =
+                displayHour.toString().padStart(2, '0') + ':' +
+                displayMin.toString().padStart(2, '0');
+
+            // Ургентность
+            if (state.timeRemaining < 60) {
+                shiftTimer.classList.add('urgent');
+            }
+            // Батарейка
+            if (state.timeRemaining < 120 && state.timeRemaining > 60) {
+                batteryIcon.textContent = '🪫';
+                batteryIcon.classList.add('low');
+            } else if (state.timeRemaining <= 60) {
+                batteryIcon.textContent = '🪫';
+                batteryIcon.classList.add('low');
+            }
+
+            if (state.timeRemaining <= 0) {
+                endShift();
+            }
+        }
+
+        function startShiftTimer() {
+            state.shiftTimerInterval = setInterval(() => {
+                if (!state.gameOver) updateShiftTimer();
+            }, 1000);
+        }
+
+        // ============ КОНЕЦ СМЕНЫ ============
+        function endShift() {
+            state.gameOver = true;
+            clearInterval(state.shiftTimerInterval);
+            clearTimeout(state.callTimeout);
+            clearInterval(state.patienceDecayInterval);
+            stopListening();
+            endCurrentCall(true);
+            hideSmsNotification();
+
+            btnPickup.disabled = true;
+            btnHangup.disabled = true;
+            btnMute.disabled = true;
+
+            shiftTimer.textContent = '00:00';
+            shiftTimer.classList.add('urgent');
+
+            // Генерация результата
+            let resultEmoji, resultTitle, resultText;
+            const totalCalls = state.callsHandled;
+            const successRate = totalCalls > 0 ? state.successfulCalls / totalCalls : 0;
+
+            if (state.moneyStolen) {
+                resultEmoji = '💸';
+                resultTitle = 'Жертва мошенников';
+                resultText = 'Вы продиктовали код из СМС! Все деньги с карты украдены. Вас увольняют с позором. Полиция уже едет.';
+            } else if (state.rudeCalls >= 5) {
+                resultEmoji = '😈';
+                resultTitle = 'Грубиян месяца';
+                resultText = 'Вы нахамили каждому второму. Начальник в шоке. Вас увольняют... но с уважением. Легенда колл-центра.';
+            } else if (state.successfulCalls >= 8 && state.rudeCalls <= 2) {
+                resultEmoji = '🏆';
+                resultTitle = 'Сотрудник дня';
+                resultText = 'Вы виртуозно отшивали спамеров! Премия, грамота и зависть коллег. Вас повышают до старшего оператора.';
+            } else if (successRate >= 0.6) {
+                resultEmoji = '👍';
+                resultTitle = 'Нормальная смена';
+                resultText = 'Отработали достойно. Пара проколов, но в целом — жить можно. Завтра снова на смену.';
+            } else if (state.failedCalls >= 6) {
+                resultEmoji = '😰';
+                resultTitle = 'Испытательный срок';
+                resultText = 'Слишком много проваленных звонков. Начальник вызывает на ковёр. Попробуйте быть убедительнее.';
+            } else {
+                resultEmoji = '😐';
+                resultTitle = 'Смена окончена';
+                resultText = 'Как-то так. Ни хорошо, ни плохо. Деньги на карту упадут. Может, завтра будет лучше.';
+            }
+
+            endCard.innerHTML = `
+                <div class="result-emoji">${resultEmoji}</div>
+                <h2>${resultTitle}</h2>
+                <p>${resultText}</p>
+                <div class="stats-row">
+                    <div class="end-stat"><span class="val">${state.callsHandled}</span>звонков</div>
+                    <div class="end-stat"><span class="val">${state.successfulCalls}</span>успешно</div>
+                    <div class="end-stat"><span class="val">${state.rudeCalls}</span>грубо</div>
+                    <div class="end-stat"><span class="val">${state.bonusMoney} ₽</span>премия</div>
+                </div>
+                <button class="restart-btn" onclick="location.reload()">🔄 Новая смена</button>
+            `;
+            endOverlay.classList.add('visible');
+
+            // Звук конца смены
+            playTone(300, 0.3, 'triangle', 0.06);
+            setTimeout(() => playTone(400, 0.3, 'triangle', 0.06), 300);
+            setTimeout(() => playTone(500, 0.5, 'triangle', 0.07), 600);
+        }
+
+        // ============ БАЗА ЗВОНЯЩИХ ============
+        const callers = [{
+            id: 'credit',
+            name: 'Андрей Петрович',
+            company: '«БыстроЗайм»',
+            avatar: '💸',
+            scripts: [
+                'Здравствуйте! Вам одобрен кредит на 500 000 рублей под смешные 0.5% в день!',
+                'Только сегодня! Супер-предложение! Кредит без справок и поручителей!',
+                'Мы заметили, что у вас отличная кредитная история. Возьмите ещё один займ!',
+            ],
+            keywords: {
+                success: ['нет', 'не надо', 'отстаньте', 'не нужно', 'не интересно', 'отказываюсь'],
+                rude: ['пошёл', 'иди на', 'отвали', 'задолбал', 'достал', 'козёл', 'идиот', 'дурак'],
+                maybe: ['подумаю', 'перезвоните', 'позже', 'занят', 'не сейчас', 'я на работе'],
+            },
+            patienceDrain: 4,
+            bonusOnSuccess: 50,
+            hasSmsTrap: false,
+        }, {
+            id: 'vacuum',
+            name: 'Светлана',
+            company: '«Kirby Premium»',
+            avatar: '🧹',
+            scripts: [
+                'Здравствуйте! Я представляю компанию Kirby. Наш пылесос чистит воздух, моет полы и готовит кофе!',
+                'Бесплатная демонстрация прямо у вас дома! Займёт всего 4 часа!',
+                'Специальная цена только сегодня — 299 000 рублей вместо 350 000!',
+            ],
+            keywords: {
+                success: ['нет', 'не нужен', 'у меня есть', 'не надо', 'дорого'],
+                rude: ['пошла', 'иди на', 'отвали', 'задолбала', 'дура', 'пылесос'],
+                maybe: ['подумаю', 'перезвоните', 'позже', 'занят', 'скидка'],
+            },
+            patienceDrain: 3,
+            bonusOnSuccess: 40,
+            hasSmsTrap: false,
+        }, {
+            id: 'insurance',
+            name: 'Дмитрий Сергеевич',
+            company: '«ГосСтрах»',
+            avatar: '🛡️',
+            scripts: [
+                'Добрый день! Оформляем ОСАГО, КАСКО, страхование от падения метеорита и нашествия инопланетян!',
+                'У вас заканчивается полис? Мы продлим со скидкой 0.1%!',
+                'Вы знали, что 97% людей не застрахованы от внезапной потери тапочек? Мы это исправим!',
+            ],
+            keywords: {
+                success: ['нет', 'застрахован', 'не нужно', 'уже есть', 'отстаньте'],
+                rude: ['пошёл', 'иди на', 'отвали', 'козёл', 'страховщик'],
+                maybe: ['подумаю', 'перезвоните', 'позже', 'скидка', 'сколько стоит'],
+            },
+            patienceDrain: 3,
+            bonusOnSuccess: 45,
+            hasSmsTrap: false,
+        }, {
+            id: 'phonescam',
+            name: '«Служба безопасности»',
+            company: '«ВашБанк» (нет)',
+            avatar: '🏦',
+            scripts: [
+                'Здравствуйте! Это служба безопасности банка. С вашей карты пытаются украсть деньги! Назовите CVV-код!',
+                'Срочно! Подозрительная операция на 150 000 рублей! Продиктуйте номер карты для блокировки!',
+                'Никому не сообщайте! Только мне! Какой код из СМС вы получили?',
+            ],
+            keywords: {
+                success: ['нет', 'мошенник', 'полиция', 'фсб', 'звоню в банк', 'не скажу'],
+                rude: ['пошёл', 'вор', 'украл', 'тюрьма', 'сядешь', 'мерзавец', 'гад'],
+                maybe: ['какой банк', 'откуда', 'данные', 'перезвоню'],
+            },
+            patienceDrain: 5,
+            bonusOnSuccess: 100,
+            hasSmsTrap: true,
+            smsSender: 'ВашБанк',
+            smsMessage: 'Код подтверждения операции:',
+        }, {
+            id: 'beauty',
+            name: 'Кристина',
+            company: '«Faberlic & Avon»',
+            avatar: '💄',
+            scripts: [
+                'Приветик! Хочешь скидку 70% на косметику? Только зарегистрируйся и приведи трёх подруг!',
+                'У нас новый каталог! Тушь, помада и сыворотка молодости из плаценты улитки!',
+                'Стань консультантом! Зарабатывай миллионы, просто покупая косметику!',
+            ],
+            keywords: {
+                success: ['нет', 'не нужна косметика', 'не надо', 'не интересно'],
+                rude: ['пошла', 'дура', 'иди на', 'отвали', 'крем'],
+                maybe: ['подумаю', 'позже', 'каталог', 'скидка', 'сколько'],
+            },
+            patienceDrain: 3,
+            bonusOnSuccess: 35,
+            hasSmsTrap: false,
+        }, {
+            id: 'windows',
+            name: 'Василий',
+            company: '«ОкнаПроект»',
+            avatar: '🪟',
+            scripts: [
+                'Здравствуйте! Замер окон бесплатно! Пластиковые окна от 4 999 рублей с установкой!',
+                'Меняем окна за 1 день! Рассрочка 0% на 20 лет!',
+                'Вы ещё не поменяли окна? Все соседи уже поменяли! Не позорьтесь!',
+            ],
+            keywords: {
+                success: ['нет', 'не нужны окна', 'стоят', 'не надо'],
+                rude: ['пошёл', 'иди на', 'отвали', 'окно'],
+                maybe: ['подумаю', 'позже', 'цена', 'скидка'],
+            },
+            patienceDrain: 4,
+            bonusOnSuccess: 30,
+            hasSmsTrap: false,
+        }, {
+            id: 'eternalpeace',
+            name: 'Отец Иннокентий',
+            company: '«Вечный Покой»',
+            avatar: '⚰️',
+            scripts: [
+                'Сын мой, задумывался ли ты о вечном? Предлагаю место на престижном кладбище со скидкой 20%!',
+                'Пакет «Всё включено»: гроб, отпевание и персональный ангел-хранитель!',
+                'Спецпредложение: купи место сейчас — потом подорожает. А ты подорожаешь ли?',
+            ],
+            keywords: {
+                success: ['нет', 'жив', 'рано', 'не надо', 'отстаньте', 'я бессмертный'],
+                rude: ['пошёл', 'смерть', 'ужас', 'жуть', 'иди'],
+                maybe: ['подумаю', 'позже', 'цены', 'скидка'],
+            },
+            patienceDrain: 3,
+            bonusOnSuccess: 60,
+            hasSmsTrap: false,
+        }, {
+            // НОВЫЙ МОШЕННИК: Лже-полицейский
+            id: 'police_scam',
+            name: 'Майор Сидоров',
+            company: '«Главное Управление МВД»',
+            avatar: '👮',
+            scripts: [
+                'С вашего номера зафиксирован звонок террористам! Срочно переведите деньги на безопасный счёт для проверки!',
+                'Ваш сын сбил человека! Нужно 300 000 рублей, чтобы замять дело! Не кладите трубку!',
+                'Майор Сидоров. Возбуждено уголовное дело. Для прекращения преследования оплатите штраф 50 000 рублей.',
+            ],
+            keywords: {
+                success: ['нет', 'полиция', 'участок', 'звоню 02', 'мошенник', 'проверю'],
+                rude: ['пошёл', 'мент', 'оборотень', 'сядешь сам', 'козёл', 'продажный'],
+                maybe: ['какое отделение', 'номер жетона', 'перезвоню', 'адрес'],
+            },
+            patienceDrain: 5,
+            bonusOnSuccess: 120,
+            hasSmsTrap: false,
+        }, {
+            // НОВЫЙ МОШЕННИК: Лже-оператор связи
+            id: 'telecom_scam',
+            name: 'Елена',
+            company: '«ТелеКомСервис»',
+            avatar: '📡',
+            scripts: [
+                'Здравствуйте! Ваш тариф устарел. Для продления номера продиктуйте код из СМС!',
+                'Техническая поддержка. На ваш номер оформляется переадресация. Для отмены назовите паспортные данные.',
+                'У вас задолженность 12 000 рублей! Если не оплатите сейчас — номер заблокируют навсегда!',
+            ],
+            keywords: {
+                success: ['нет', 'мошенник', 'звоню оператору', 'блокируйте', 'не скажу'],
+                rude: ['пошла', 'дура', 'воровка', 'тюрьма', 'обман'],
+                maybe: ['какой оператор', 'номер договора', 'перезвоню', 'личный кабинет'],
+            },
+            patienceDrain: 4,
+            bonusOnSuccess: 90,
+            hasSmsTrap: true,
+            smsSender: 'TeleCom',
+            smsMessage: 'Код для продления номера:',
+        }, {
+            // НОВЫЙ МОШЕННИК: Крипто-инвестор
+            id: 'crypto_scam',
+            name: 'Максим',
+            company: '«CryptoBoom Capital»',
+            avatar: '₿',
+            scripts: [
+                'Брат! Ты ещё не в крипте? Наш токен вырос на 5000% за неделю! Вложи 50 000 — получишь миллион!',
+                'Закрытое крипто-сообщество. Только для своих. Гарантированный доход 300% в месяц. Переведи депозит.',
+                'Илон Маск лично рекламирует нашу платформу! Не упусти шанс! Старт через час!',
+            ],
+            keywords: {
+                success: ['нет', 'скам', 'пирамида', 'не интересуюсь', 'крипта'],
+                rude: ['пошёл', 'лохотрон', 'кидала', 'мошенник', 'биток'],
+                maybe: ['сколько минимальный', 'документы', 'сайт', 'перезвоните'],
+            },
+            patienceDrain: 3,
+            bonusOnSuccess: 80,
+            hasSmsTrap: false,
+        }, {
+            // НОВЫЙ МОШЕННИК: Лже-налоговая
+            id: 'tax_scam',
+            name: 'Инспектор ФНС',
+            company: '«Федеральная Налоговая»',
+            avatar: '📋',
+            scripts: [
+                'ФНС. У вас незадекларированный доход 5 миллионов. Срочно оплатите налог 650000 на наш счёт!',
+                'Камеральная проверка! Вы забыли заплатить налог на воздух. Штраф 45 000 или уголовное дело!',
+                'Вам положен налоговый вычет 250000. Для получения назовите реквизиты карты и CVV.',
+            ],
+            keywords: {
+                success: ['нет', 'налоговая', 'личный кабинет', 'инспекция', 'звоню', 'проверю'],
+                rude: ['пошёл', 'бюрократ', 'вор', 'взятка', 'козёл', 'дебил', 'дурак'],
+                maybe: ['какой инн', 'номер постановления', 'адрес инспекции'],
+            },
+            patienceDrain: 5,
+            bonusOnSuccess: 110,
+            hasSmsTrap: false,
+        }, {
+            // НОВЫЙ МОШЕННИК: Псевдо-медик
+            id: 'medical_scam',
+            name: 'Доктор Волков',
+            company: '«МедЦентр Здоровье»',
+            avatar: '💉',
+            scripts: [
+                'У вас плохие анализы! Срочно купите наш уникальный БАД за 89 000 рублей — иначе рак!',
+                'Прибор квантовой медицины исцеляет всё! Всего 150 000 и вы забудете о болезнях!',
+                'Бесплатная диагностика по фото! Пришлите ваше фото и паспортные данные.',
+            ],
+            keywords: {
+                success: ['нет', 'врачу', 'поликлиника', 'не верю', 'шарлатан'],
+                rude: ['пошёл', 'лже-врач', 'убийца', 'шарлатан', 'дурак'],
+                maybe: ['какая клиника', 'лицензия', 'сертификат', 'отзывы'],
+            },
+            patienceDrain: 4,
+            bonusOnSuccess: 75,
+            hasSmsTrap: false,
+        }, {
+            // НОВЫЙ МОШЕННИК: Лже-прокуратура
+            id: 'prosecutor_scam',
+            name: 'Старший следователь',
+            company: '«Генеральная Прокуратура»',
+            avatar: '⚖️',
+            scripts: [
+                'Возбуждено дело о госизмене! Для снятия обвинений переведите 500 000 на спецсчёт!',
+                'Вы свидетель по делу о коррупции. Вам положена компенсация. Но сначала оплатите госпошлину 30 000.',
+                'Ваши данные украдены! Чтобы защитить сбережения — переведите их на резервный счёт прокуратуры.',
+            ],
+            keywords: {
+                success: ['нет', 'адвокат', 'прокуратура', 'звоню', 'мошенник', 'проверю'],
+                rude: ['пошёл', 'продажный', 'коррупционер', 'сядешь', 'мент'],
+                maybe: ['номер дела', 'какой отдел', 'повестка', 'адрес'],
+            },
+            patienceDrain: 5,
+            bonusOnSuccess: 130,
+            hasSmsTrap: false,
+        }, {
+            // НОВЫЙ МОШЕННИК: Лже-брокер
+            id: 'broker_scam',
+            name: 'Алекс Голдман',
+            company: '«Goldman Sachs Invest»',
+            avatar: '📈',
+            scripts: [
+                'Мистер Алекс Голдман! Уникальная стратегия на Forex! Вложите $1000 — получите $10 000 через неделю!',
+                'Торговые сигналы точностью 99.9%! Только для VIP-клиентов. Регистрация бесплатно, депозит обязательно!',
+                'Ваш персональный брокер. Рынок падает — мы растём! Откройте счёт прямо сейчас!',
+            ],
+            keywords: {
+                success: ['нет', 'форекс', 'брокер', 'не интересуюсь', 'акции'],
+                rude: ['пошёл', 'лохотрон', 'кидала', 'развод', 'дурак'],
+                maybe: ['лицензия', 'регулятор', 'документы', 'сайт'],
+            },
+            patienceDrain: 3,
+            bonusOnSuccess: 85,
+            hasSmsTrap: false,
+        }, {
+            // НОВЫЙ МОШЕННИК: Псевдо-экстрасенс
+            id: 'psychic_scam',
+            name: 'Мадам Клара',
+            company: '«Центр Парапсихологии»',
+            avatar: '🔮',
+            scripts: [
+                'Я вижу порчу! На вас проклятие седьмого колена! Срочно нужен обряд за 75 000 рублей!',
+                'Ваша аура чёрная! Я сниму сглаз по фотографии. Пришлите фото и данные карты для оплаты.',
+                'Уникальный амулет удачи! Последний экземпляр! Всего 45 000 и ваша жизнь изменится!',
+            ],
+            keywords: {
+                success: ['нет', 'шарлатан', 'не верю', 'атеист', 'наука', 'не'],
+                rude: ['пошла', 'ведьма', 'шарлатанка', 'дура', 'колдунья'],
+                maybe: ['сколько стоит', 'какой обряд', 'отзывы', 'гарантия'],
+            },
+            patienceDrain: 3,
+            bonusOnSuccess: 55,
+            hasSmsTrap: false,
+        }, ];
+
+        // ============ ВХОДЯЩИЙ ЗВОНОК ============
+        function startIncomingCall() {
+            if (state.gameOver || state.isCallActive || state.isCallIncoming) return;
+
+            state.isCallIncoming = true;
+            state.callerResponded = false;
+            state.saidPhrases = [];
+            state.currentCaller = callers[Math.floor(Math.random() * callers.length)];
+            state.callerPatience = 100;
+            state.moneyStolen = false;
+            hideSmsNotification();
+
+            // Обновление карточки
+            callCard.className = 'call-card incoming';
+            callerAvatar.textContent = state.currentCaller.avatar;
+            callerName.textContent = state.currentCaller.name;
+            callerCompany.textContent = state.currentCaller.company;
+            callerScript.textContent = '📳 Входящий звонок...';
+            recognizedText.textContent = '';
+            recognizedText.classList.remove('visible');
+            speechIndicator.classList.remove('listening');
+
+            btnPickup.disabled = false;
+            btnHangup.disabled = true;
+            btnPickup.style.animation = 'avatar-float 0.5s ease-in-out infinite';
+
+            // Звук звонка
+            sfxRing();
+
+            // Автосброс если не ответить
+            state.callTimeout = setTimeout(() => {
+                if (state.isCallIncoming && !state.isCallActive) {
+                    missCall();
+                }
+            }, 8000);
+
+            // Повторный ринг
+            const ringInterval = setInterval(() => {
+                if (!state.isCallIncoming || state.isCallActive || state.gameOver) {
+                    clearInterval(ringInterval);
+                    return;
+                }
+                sfxRing();
+            }, 2000);
+            state._ringInterval = ringInterval;
+        }
+
+        function missCall() {
+            if (!state.isCallIncoming) return;
+            clearTimeout(state.callTimeout);
+            clearInterval(state._ringInterval);
+            state.isCallIncoming = false;
+            state.currentCaller = null;
+            state.callsHandled++;
+            state.failedCalls++;
+            callsHandled.textContent = state.callsHandled;
+            statFailed.textContent = state.failedCalls;
+            updateStatsDisplay();
+            hideSmsNotification();
+            callCard.className = 'call-card';
+            callerAvatar.textContent = '📞';
+            callerName.textContent = 'Пропущенный звонок';
+            callerCompany.textContent = '';
+            callerScript.textContent = 'Абонент не ответил...';
+            btnPickup.disabled = true;
+            btnHangup.disabled = true;
+            btnPickup.style.animation = '';
+            showToast('Звонок пропущен 😞', 'warning');
+            sfxFail();
+            scheduleNextCall();
+        }
+
+        // ============ ОТВЕТ НА ЗВОНОК ============
+        function pickupCall() {
+            if (!state.isCallIncoming || state.isCallActive || state.gameOver) return;
+
+            initAudio();
+            clearTimeout(state.callTimeout);
+            clearInterval(state._ringInterval);
+            state.isCallIncoming = false;
+            state.isCallActive = true;
+            state.callerResponded = false;
+            state.callsHandled++;
+            callsHandled.textContent = state.callsHandled;
+
+            callCard.className = 'call-card active';
+            // ВЫБИРАЕМ СЛУЧАЙНЫЙ СКРИПТ
+            const selectedScript = getRandomScript(state.currentCaller.scripts);
+            callerScript.textContent = selectedScript;
+            btnPickup.disabled = true;
+            btnHangup.disabled = false;
+            btnPickup.style.animation = '';
+
+            sfxPickup();
+            showToast('Вы ответили 📞', 'success');
+            startListening();
+            startPatienceDecay();
+            speakCallerScript(selectedScript);
+
+            // Если у звонящего есть SMS-ловушка, показываем уведомление
+            if (state.currentCaller.hasSmsTrap) {
+                setTimeout(() => {
+                    if (state.isCallActive && !state.gameOver) {
+                        showSmsNotification(
+                            state.currentCaller.smsSender,
+                            state.currentCaller.smsMessage
+                        );
+                    }
+                }, 2000);
+            }
+
+            // Автосброс если звонок слишком долгий
+            state.callTimeout = setTimeout(() => {
+                if (state.isCallActive) {
+                    hangupCall(false);
+                    showToast('Слишком долгий разговор ⏰', 'warning');
+                }
+            }, 25000);
+        }
+
+        // ============ СБРОС ЗВОНКА ============
+        function hangupCall(manual = true) {
+            if (!state.isCallActive && !state.isCallIncoming) return;
+
+            clearTimeout(state.callTimeout);
+            clearInterval(state._ringInterval);
+            clearInterval(state.patienceDecayInterval);
+            stopListening();
+
+            const wasActive = state.isCallActive;
+            state.isCallActive = false;
+            state.isCallIncoming = false;
+
+            callCard.className = 'call-card ended';
+            btnPickup.disabled = true;
+            btnHangup.disabled = true;
+            btnPickup.style.animation = '';
+            speechIndicator.classList.remove('listening');
+            recognizedText.classList.remove('visible');
+
+            hideSmsNotification();
+
+            if (wasActive && manual) {
+                // Игрок сбросил активный звонок
+                if (state.moneyStolen) {
+                    // Деньги украдены через SMS - отнимаем 50% премии
+                    const penalty = Math.floor(state.bonusMoney / 2);
+                    state.bonusMoney -= penalty;
+                    state.failedCalls++;
+                    statFailed.textContent = state.failedCalls;
+                    statBonus.textContent = state.bonusMoney + ' ₽';
+                    sfxMoneyStolen();
+                    showToast('💸 Потеряно ' + penalty + ' ₽ из премии! Код продиктован!', 'error');
+                } else if (state.callerPatience <= 30) {
+                    // Почти довели до ручки
+                    state.rudeCalls++;
+                    statRude.textContent = state.rudeCalls;
+                    sfxRude();
+                    showToast('Грубый сброс! 😡', 'error');
+                } else if (state.callerResponded) {
+                    // Успешный разговор
+                    state.successfulCalls++;
+                    state.bonusMoney += state.currentCaller.bonusOnSuccess;
+                    statSuccess.textContent = state.successfulCalls;
+                    statBonus.textContent = state.bonusMoney + ' ₽';
+                    sfxSuccess();
+                    showToast('Успешно отшит! +' + state.currentCaller.bonusOnSuccess + ' ₽', 'success');
+                } else {
+                    // Неудачный
+                    state.failedCalls++;
+                    statFailed.textContent = state.failedCalls;
+                    sfxFail();
+                    showToast('Неубедительно...', 'warning');
+                }
+            } else if (!wasActive) {
+                // Сброс входящего
+                state.failedCalls++;
+                statFailed.textContent = state.failedCalls;
+                sfxFail();
+                showToast('Сброшено ❌', 'error');
+            }
+
+            updateStatsDisplay();
+            state.currentCaller = null;
+            state.callerPatience = 100;
+            state.moneyStolen = false;
+            callerScript.textContent = 'Звонок завершён';
+            callerCompany.textContent = '';
+
+            setTimeout(() => {
+                callCard.className = 'call-card';
+                callerAvatar.textContent = '📞';
+                callerName.textContent = 'Ожидание звонка...';
+                callerCompany.textContent = '';
+                callerScript.textContent = '';
+                recognizedText.textContent = '';
+            }, 1200);
+
+            scheduleNextCall();
+        }
+
+        function endCurrentCall(silent = false) {
+            clearTimeout(state.callTimeout);
+            clearInterval(state._ringInterval);
+            clearInterval(state.patienceDecayInterval);
+            stopListening();
+            state.isCallActive = false;
+            state.isCallIncoming = false;
+            state.currentCaller = null;
+            state.callerPatience = 100;
+            hideSmsNotification();
+            if (!silent) {
+                callCard.className = 'call-card';
+                callerAvatar.textContent = '📞';
+                callerName.textContent = 'Смена окончена';
+                callerCompany.textContent = '';
+                callerScript.textContent = '';
+            }
+            btnPickup.disabled = true;
+            btnHangup.disabled = true;
+            btnMute.disabled = true;
+            speechIndicator.classList.remove('listening');
+            recognizedText.classList.remove('visible');
+        }
+
+        // ============ ТЕРПЕНИЕ ЗВОНЯЩЕГО ============
+        function startPatienceDecay() {
+            clearInterval(state.patienceDecayInterval);
+            state.patienceDecayInterval = setInterval(() => {
+                if (!state.isCallActive || state.gameOver) {
+                    clearInterval(state.patienceDecayInterval);
+                    return;
+                }
+                state.callerPatience -= state.currentCaller.patienceDrain;
+                if (state.callerPatience <= 0) {
+                    state.callerPatience = 0;
+                    clearInterval(state.patienceDecayInterval);
+                    // Звонящий сам вешает трубку
+                    hangupCall(false);
+                    showToast('Сам бросил трубку! 🤬', 'error');
+                    state.failedCalls++;
+                    statFailed.textContent = state.failedCalls;
+                    updateStatsDisplay();
+                }
+                // Визуальные подсказки терпения
+                if (state.callerPatience < 30 && state.callerPatience > 0) {
+                    callCard.style.borderColor = 'rgba(255,100,60,0.5)';
+                }
+            }, 1000);
+        }
+
+        // ============ ОЗВУЧКА СКРИПТА ЗВОНЯЩЕГО ============
+        function speakCallerScript(text) {
+            if (!state.isCallActive || state.gameOver) return;
+            callerScript.textContent = text;
+            // Используем Web Speech API для озвучки
+            if ('speechSynthesis' in window) {
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ru-RU';
+                utterance.rate = 1.1;
+                utterance.pitch = 0.9 + Math.random() * 0.3;
+                utterance.volume = 0.7;
+                window.speechSynthesis.cancel();
+                window.speechSynthesis.speak(utterance);
+            }
+        }
+
+        // ============ РАСПОЗНАВАНИЕ РЕЧИ ============
+        function startListening() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                showToast('Распознавание речи не поддерживается 😢 Используйте кнопки', 'warning');
+                // Добавляем fallback-кнопки
+                addFallbackButtons();
+                return;
+            }
+
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            state.recognition = new SpeechRecognition();
+            state.recognition.lang = 'ru-RU';
+            state.recognition.interimResults = true;
+            state.recognition.continuous = true;
+            state.recognition.maxAlternatives = 3;
+
+            state.recognition.onstart = () => {
+                state.isListening = true;
+                speechIndicator.classList.add('listening');
+                btnMute.classList.remove('muted');
+            };
+
+            state.recognition.onresult = (event) => {
+                if (!state.isCallActive || state.gameOver || state.isMuted) return;
+
+                let transcript = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                transcript = transcript.toLowerCase().trim();
+
+                if (transcript.length > 0) {
+                    recognizedText.textContent = '🎤 ' + transcript;
+                    recognizedText.classList.add('visible');
+
+                    // Проверка на диктовку SMS-кода
+                    if (state.currentSmsCode && !state.moneyStolen) {
+                        const codeCheck = transcript.replace(/\s+/g, '');
+                        if (codeCheck.includes(state.currentSmsCode)) {
+                            state.moneyStolen = true;
+                            state.callerResponded = true;
+                            sfxMoneyStolen();
+                            hideSmsNotification();
+                            showToast('💸 ВЫ ПРОДИКТОВАЛИ КОД! -50% ОТ ПРЕМИИ!', 'error');
+
+                            const stolenReactions = [
+                                'Спасибо! Деньги уже у нас! Приятно было иметь с вами дело!',
+                                'Код принят! Операция на 450 000 рублей выполнена успешно!',
+                                'Отлично! Ваши сбережения теперь наши. Всего доброго!',
+                            ];
+                            speakCallerScript(stolenReactions[Math.floor(Math.random() * stolenReactions)]);
+
+                            // Визуальный эффект
+                            phoneContainer.style.animation = 'shake 0.5s ease-in-out';
+                            setTimeout(() => {
+                                phoneContainer.style.animation = '';
+                                hangupCall(true);
+                            }, 2000);
+
+                            return;
+                        }
+                    }
+
+                    processSpeech(transcript);
+                }
+            };
+
+            state.recognition.onerror = (event) => {
+                if (event.error === 'no-speech' || event.error === 'aborted') {
+                    // нормально
+                } else if (event.error === 'not-allowed') {
+                    showToast('Разрешите доступ к микрофону 🎤', 'warning');
+                }
+                // Перезапуск
+                if (state.isCallActive && !state.gameOver && !state.isMuted) {
+                    setTimeout(() => {
+                        if (state.isCallActive && !state.gameOver && !state.isMuted) {
+                            try { state.recognition.start(); } catch (e) { /* */ }
+                        }
+                    }, 500);
+                }
+            };
+
+            state.recognition.onend = () => {
+                state.isListening = false;
+                speechIndicator.classList.remove('listening');
+                // Перезапуск
+                if (state.isCallActive && !state.gameOver && !state.isMuted) {
+                    setTimeout(() => {
+                        if (state.isCallActive && !state.gameOver && !state.isMuted) {
+                            try { state.recognition.start(); } catch (e) { /* */ }
+                        }
+                    }, 300);
+                }
+            };
+
+            try { state.recognition.start(); } catch (e) { /* */ }
+        }
+
+        function stopListening() {
+            if (state.recognition) {
+                try { state.recognition.stop(); } catch (e) { /* */ }
+                state.recognition = null;
+            }
+            state.isListening = false;
+            speechIndicator.classList.remove('listening');
+            recognizedText.classList.remove('visible');
+        }
+
+        // ============ ОБРАБОТКА РЕЧИ ============
+        function processSpeech(transcript) {
+            if (!state.isCallActive || !state.currentCaller || state.callerResponded || state.gameOver) return;
+            if (state.moneyStolen) return;
+
+            const k = state.currentCaller.keywords;
+            let matched = false;
+
+            // Проверка на грубость
+            for (const word of k.rude) {
+                if (transcript.includes(word)) {
+                    state.rudeCalls++;
+                    statRude.textContent = state.rudeCalls;
+                    state.callerResponded = true;
+                    updateStatsDisplay();
+                    sfxRude();
+                    showToast('😡 Грубо! Начальник недоволен', 'error');
+                    phoneContainer.classList.add('shake');
+                    setTimeout(() => phoneContainer.classList.remove('shake'), 600);
+
+                    // Звонящий реагирует
+                    const rudeReactions = [
+                        'Что вы себе позволяете?! Я записываю разговор!',
+                        'Вы пожалеете! Я звоню вашему руководству!',
+                        'Хам! Вас уволят!',
+                        'Да как вы смеете?!',
+                    ];
+                    speakCallerScript(rudeReactions[Math.floor(Math.random() * rudeReactions.length)]);
+                    setTimeout(() => hangupCall(true), 2000);
+                    matched = true;
+                    break;
+                }
+            }
+
+            // Проверка на успех
+            if (!matched) {
+                for (const word of k.success) {
+                    if (transcript.includes(word)) {
+                        state.successfulCalls++;
+                        state.bonusMoney += state.currentCaller.bonusOnSuccess;
+                        state.callerResponded = true;
+                        statSuccess.textContent = state.successfulCalls;
+                        statBonus.textContent = state.bonusMoney + ' ₽';
+                        updateStatsDisplay();
+                        sfxSuccess();
+                        showToast('✅ Успешно! +' + state.currentCaller.bonusOnSuccess + ' ₽', 'success');
+
+                        const successReactions = [
+                            'Ну ладно... извините за беспокойство. До свидания.',
+                            'Понял, понял... всего доброго!',
+                            'Как скажете... не буду больше тревожить.',
+                            'Хорошо, удаляю ваш номер из базы...',
+                        ];
+                        speakCallerScript(successReactions[Math.floor(Math.random() * successReactions)]);
+                        setTimeout(() => hangupCall(true), 2000);
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            // Проверка на "может быть"
+            if (!matched) {
+                for (const word of k.maybe) {
+                    if (transcript.includes(word)) {
+                        state.callerPatience = Math.min(100, state.callerPatience + 15);
+                        callCard.style.borderColor = 'rgba(200,200,100,0.4)';
+                        const maybeReactions = [
+                            'Конечно, я перезвоню! Во сколько удобно?',
+                            'Хорошо, давайте позже! Я настойчивый!',
+                            'Записываю вас в потенциальные клиенты!',
+                        ];
+                        speakCallerScript(maybeReactions[Math.floor(Math.random() * maybeReactions)]);
+                        showToast('🤔 Звонящий обнадёжен', 'warning');
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            // Неопределённый ответ
+            if (!matched && transcript.length > 3) {
+                const vagueReactions = [
+                    'Простите, я не расслышал... Так вы согласны?',
+                    'Что? Повторите, пожалуйста!',
+                    'Я не понял... Это "да" или "нет"?',
+                ];
+                speakCallerScript(vagueReactions[Math.floor(Math.random() * vagueReactions)]);
+                state.callerPatience = Math.max(0, state.callerPatience - 5);
+            }
+        }
+
+        // ============ FALLBACK-КНОПКИ (без микрофона) ============
+        function addFallbackButtons() {
+            const btnRow = document.querySelector('.btn-row');
+            const existingFallback = document.getElementById('fallbackBtns');
+            if (existingFallback) return;
+
+            const fallbackDiv = document.createElement('div');
+            fallbackDiv.id = 'fallbackBtns';
+            fallbackDiv.style.cssText = `
+                display: flex; gap: 6px; justify-content: center; flex-wrap: wrap;
+                margin-top: 8px; width: 100%;
+            `;
+            fallbackDiv.innerHTML = `
+                <button class="fallback-btn" data-action="нет" style="
+                    padding:8px 14px;border-radius:18px;border:1px solid rgba(255,255,255,0.2);
+                    background:rgba(255,60,60,0.15);color:#faa;cursor:pointer;font-size:12px;
+                ">❌ Нет</button>
+                <button class="fallback-btn" data-action="подумаю" style="
+                    padding:8px 14px;border-radius:18px;border:1px solid rgba(255,255,255,0.2);
+                    background:rgba(255,200,60,0.15);color:#fca;cursor:pointer;font-size:12px;
+                ">🤔 Подумаю</button>
+                <button class="fallback-btn" data-action="грубо" style="
+                    padding:8px 14px;border-radius:18px;border:1px solid rgba(255,255,255,0.2);
+                    background:rgba(200,60,200,0.15);color:#faf;cursor:pointer;font-size:12px;
+                ">😡 Грубо</button>
+                <button class="fallback-btn" data-action="код" style="
+                    padding:8px 14px;border-radius:18px;border:1px solid rgba(255,100,0,0.4);
+                    background:rgba(255,100,0,0.15);color:#f90;cursor:pointer;font-size:12px;
+                ">🔢 Продиктовать код</button>
+            `;
+            btnRow.parentNode.insertBefore(fallbackDiv, btnRow.nextSibling);
+
+            document.querySelectorAll('.fallback-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    if (!state.isCallActive || state.gameOver || state.isMuted) return;
+                    const action = btn.dataset.action;
+                    if (action === 'нет') processSpeech('нет не надо отстаньте');
+                    if (action === 'подумаю') processSpeech('я подумаю позже');
+                    if (action === 'грубо') processSpeech('пошёл на отвали');
+                    if (action === 'код' && state.currentSmsCode) {
+                        processSpeech(state.currentSmsCode);
+                    }
+                });
+            });
+        }
+
+        // ============ КНОПКА MUTE ============
+        function toggleMute() {
+            state.isMuted = !state.isMuted;
+            if (state.isMuted) {
+                btnMute.classList.add('muted');
+                btnMute.textContent = '🔇';
+                stopListening();
+                showToast('Микрофон заглушен 🔇', 'warning');
+            } else {
+                btnMute.classList.remove('muted');
+                btnMute.textContent = '🎤';
+                if (state.isCallActive) startListening();
+                showToast('Микрофон включен 🎤', 'success');
+            }
+        }
+
+        // ============ ПЛАНИРОВАНИЕ СЛЕДУЮЩЕГО ЗВОНКА ============
+        function scheduleNextCall() {
+            if (state.gameOver) return;
+            const delay = 2000 + Math.random() * 5000;
+            state.callTimeout = setTimeout(() => {
+                if (!state.gameOver && !state.isCallActive && !state.isCallIncoming) {
+                    startIncomingCall();
+                }
+            }, delay);
+        }
+
+        // ============ ОБНОВЛЕНИЕ СТАТИСТИКИ ============
+        function updateStatsDisplay() {
+            statSuccess.textContent = state.successfulCalls;
+            statFailed.textContent = state.failedCalls;
+            statRude.textContent = state.rudeCalls;
+            statBonus.textContent = state.bonusMoney + ' ₽';
+            callsHandled.textContent = state.callsHandled;
+        }
+
+        // ============ ОБРАБОТЧИКИ КНОПОК ============
+        btnPickup.addEventListener('click', () => {
+            initAudio();
+            pickupCall();
+        });
+        btnHangup.addEventListener('click', () => {
+            initAudio();
+            hangupCall(true);
+        });
+        btnMute.addEventListener('click', () => {
+            initAudio();
+            toggleMute();
+        });
+
+        // ============ КЛАВИАТУРНЫЕ СОЧЕТАНИЯ ============
+        document.addEventListener('keydown', (e) => {
+            if (state.gameOver) return;
+            initAudio();
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (state.isCallIncoming && !state.isCallActive) pickupCall();
+                else if (state.isCallActive) hangupCall(true);
+            }
+            if (e.key === 'm' || e.key === 'M') {
+                toggleMute();
+            }
+            if (e.key === 'Escape') {
+                if (state.isCallActive) hangupCall(true);
+                else if (state.isCallIncoming) missCall();
+            }
+            // Цифры как fallback
+            if (e.key === '1' && state.isCallActive && !state.isMuted) processSpeech('нет не надо');
+            if (e.key === '2' && state.isCallActive && !state.isMuted) processSpeech('подумаю позже');
+            if (e.key === '3' && state.isCallActive && !state.isMuted) processSpeech('пошёл на');
+        });
+
+        // ============ ЗАПУСК ============
+        function startGame() {
+            state.timeRemaining = state.shiftDuration;
+            shiftTimer.textContent = formatTime(state.timeRemaining);
+            timeDisplay.textContent = '09:00';
+            shiftTimer.classList.remove('urgent');
+            batteryIcon.textContent = '🔋';
+            batteryIcon.classList.remove('low');
+            btnPickup.disabled = true;
+            btnHangup.disabled = true;
+            btnMute.disabled = false;
+            btnMute.classList.remove('muted');
+            btnMute.textContent = '🎤';
+            endOverlay.classList.remove('visible');
+            callCard.className = 'call-card';
+            callerAvatar.textContent = '📞';
+            callerName.textContent = 'Ожидание звонка...';
+            callerCompany.textContent = '';
+            callerScript.textContent = '';
+            recognizedText.textContent = '';
+            recognizedText.classList.remove('visible');
+            speechIndicator.classList.remove('listening');
+            hideSmsNotification();
+            state.moneyStolen = false;
+            state.usedScripts = {};
+
+            startShiftTimer();
+            scheduleNextCall();
+
+            // Проверка поддержки речи
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                setTimeout(() => {
+                    showToast('Нет доступа к микрофону. Используйте кнопки 1/2/3 или клики.',
+                        'warning');
+                    addFallbackButtons();
+                }, 2000);
+            }
+
+            console.log('📞 Симулятор спам-звонка запущен.');
+            console.log('   Говорите в микрофон: "нет", "подумаю", "пошёл на..."');
+            console.log('   Или используйте кнопки и клавиши 1/2/3.');
+            console.log('   Enter — ответить/сбросить, M — заглушить микрофон.');
+            console.log('   ⚠️ Если увидите SMS — НЕ диктуйте код! Потеряете 50% премии!');
+            console.log('   🎭 Каждый звонящий теперь использует случайные фразы!');
+        }
+
+        startGame();
+
+        // ============ ПРЕДУПРЕЖДЕНИЕ О ВЫХОДЕ ============
+        window.addEventListener('beforeunload', (e) => {
+            if (!state.gameOver && state.callsHandled > 0) {
+                e.preventDefault();
+                e.returnValue = 'Смена ещё не закончена! Начальник будет в ярости.';
+                return e.returnValue;
+            }
+        });
+
+    })();
+</script>
+</body>
+</html>
